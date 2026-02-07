@@ -193,24 +193,32 @@ class StockBot:
         await query.edit_message_text(msg, reply_markup=self.back_menu(), parse_mode='Markdown')
 
     async def test_push(self, query):
-        """测试推送"""
+        """测试推送 - 用第一个商品的真实数据"""
         if not self.targets:
             await query.edit_message_text("❌ 请先添加推送目标", reply_markup=self.back_menu())
             return
         
-        # 构造测试消息
+        if not self.products:
+            await query.edit_message_text("❌ 请先添加监控商品", reply_markup=self.back_menu())
+            return
+        
+        # 用第一个商品
+        p = self.products[0]
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        msg = f"""#库存监控 #补货通知
+        
+        coupon_line = f"🎫 优惠码: `{p['coupon']}`  ← 点击复制\n" if p.get('coupon') else ""
+        specs_line = f"⚙️ {p['specs']}\n" if p.get('specs') else ""
+        status = "✅ 有货" if p.get('in_stock') else "❌ 无货"
+        
+        msg = f"""#库存监控 #测试推送
 
-**RFCHOST**
-JP2-CO-Mini 测试商品
-💰 $16.49/月
-⚙️ 1C/1G/20G/1.5T
-🎫 优惠码: `TESTCODE`  ← 点击复制
+**{p['merchant']}**
+{p['name']}
+💰 {p['price']}
+{specs_line}{coupon_line}
+🔗 [直接购买]({p['url']})
 
-🔗 [直接购买](https://example.com)
-
-{now} ✅ 有货"""
+{now} {status}"""
         
         sent = 0
         for t in self.targets:
