@@ -59,7 +59,8 @@ class StockBot:
             [InlineKeyboardButton("🎯 推送目标", callback_data="targets"),
              InlineKeyboardButton("➕ 添加目标", callback_data="add_target")],
             [InlineKeyboardButton("⏱ 检查频率", callback_data="interval"),
-             InlineKeyboardButton("📊 运行状态", callback_data="status")]
+             InlineKeyboardButton("📊 运行状态", callback_data="status")],
+            [InlineKeyboardButton("🧪 测试推送", callback_data="test_push")]
         ]
         return InlineKeyboardMarkup(keyboard)
 
@@ -124,6 +125,8 @@ class StockBot:
             sec = int(data.split("_")[1])
             self.check_interval = sec
             await query.edit_message_text(f"✅ 检查频率已设为 {sec} 秒", reply_markup=self.back_menu())
+        elif data == "test_push":
+            await self.test_push(query)
 
     def back_menu(self):
         return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 返回菜单", callback_data="menu")]])
@@ -188,6 +191,41 @@ class StockBot:
 🎯 推送目标: {len(self.targets)} 个
 ⏱ 检查频率: {self.check_interval} 秒"""
         await query.edit_message_text(msg, reply_markup=self.back_menu(), parse_mode='Markdown')
+
+    async def test_push(self, query):
+        """测试推送"""
+        if not self.targets:
+            await query.edit_message_text("❌ 请先添加推送目标", reply_markup=self.back_menu())
+            return
+        
+        # 构造测试消息
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        msg = f"""#库存监控 #补货通知
+
+**RFCHOST**
+JP2-CO-Mini 测试商品
+💰 $16.49/月
+⚙️ 1C/1G/20G/1.5T
+🎫 优惠码: `TESTCODE`  ← 点击复制
+
+🔗 [直接购买](https://example.com)
+
+{now} ✅ 有货"""
+        
+        sent = 0
+        for t in self.targets:
+            try:
+                await query.message.chat.get_bot().send_message(
+                    chat_id=t['chat_id'],
+                    text=msg,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+                sent += 1
+            except Exception as e:
+                pass
+        
+        await query.edit_message_text(f"✅ 测试推送完成\n发送到 {sent} 个目标", reply_markup=self.back_menu())
 
     async def show_interval(self, query):
         keyboard = [
