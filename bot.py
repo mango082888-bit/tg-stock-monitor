@@ -252,34 +252,34 @@ class StockBot:
                 return
             
             if action == "add_url":
-            parts = text.split(maxsplit=1)
-            url = parts[0]
-            coupon = parts[1] if len(parts) > 1 else None
-            
-            await update.message.reply_text("🔍 正在解析...")
-            info = await self.monitor.parse_product(url)
-            
-            if not info:
-                await update.message.reply_text("❌ 无法解析", reply_markup=self.back_menu())
-                return
-            
-            pid = max([p['id'] for p in self.products], default=0) + 1
-            product = {
-                'id': pid, 'url': url,
-                'name': info.get('name', '未知'),
-                'merchant': info.get('merchant', '未知'),
-                'price': info.get('price', '未知'),
-                'specs': info.get('specs', ''),
-                'coupon': coupon,
-                'in_stock': info.get('in_stock', False),
-                'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            self.products.append(product)
-            self.save_products()
-            
-            stock = '有货 ✅' if product['in_stock'] else '无货 ❌'
-            msg = f"✅ **添加成功**\n\n🏪 {product['merchant']}\n📦 {product['name']}\n💰 {product['price']}\n🎫 {coupon or '无'}\n📊 {stock}\n🔢 编号: {pid}"
-            await update.message.reply_text(msg, reply_markup=self.back_menu(), parse_mode='Markdown')
+                parts = text.split(maxsplit=1)
+                url = parts[0]
+                coupon = parts[1] if len(parts) > 1 else None
+                
+                await update.message.reply_text("🔍 正在解析...")
+                info = await self.monitor.parse_product(url)
+                
+                if not info:
+                    await update.message.reply_text("❌ 无法解析", reply_markup=self.back_menu())
+                    return
+                
+                pid = max([p['id'] for p in self.products], default=0) + 1
+                product = {
+                    'id': pid, 'url': url,
+                    'name': info.get('name', '未知'),
+                    'merchant': info.get('merchant', '未知'),
+                    'price': info.get('price', '未知'),
+                    'specs': info.get('specs', ''),
+                    'coupon': coupon,
+                    'in_stock': info.get('in_stock', False),
+                    'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                self.products.append(product)
+                self.save_products()
+                
+                stock = '有货 ✅' if product['in_stock'] else '无货 ❌'
+                msg = f"✅ **添加成功**\n\n🏪 {product['merchant']}\n📦 {product['name']}\n💰 {product['price']}\n🎫 {coupon or '无'}\n📊 {stock}\n🔢 编号: {pid}"
+                await update.message.reply_text(msg, reply_markup=self.back_menu(), parse_mode='Markdown')
 
     async def notify(self, app, product, is_restock):
         """发送通知"""
