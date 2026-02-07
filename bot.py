@@ -300,7 +300,8 @@ class StockBot:
                 self.save_products()
                 
                 stock = '有货 ✅' if product['in_stock'] else '无货 ❌'
-                msg = f"✅ **添加成功**\n\n🏪 {product['merchant']}\n📦 {product['name']}\n💰 {product['price']}\n🎫 {coupon or '无'}\n📊 {stock}\n🔢 编号: {pid}"
+                coupon_text = f"`{coupon}`  ← 点击复制" if coupon else "无"
+                msg = f"✅ **添加成功**\n\n🏪 {product['merchant']}\n📦 {product['name']}\n💰 {product['price']}\n🎫 {coupon_text}\n📊 {stock}\n🔢 编号: {pid}"
                 await update.message.reply_text(msg, reply_markup=self.back_menu(), parse_mode='Markdown')
 
     async def notify(self, app, product, is_restock):
@@ -313,7 +314,7 @@ class StockBot:
             tag = "#无货"
             status = "❌ 无货"
         
-        coupon_line = f"🎫 优惠码: `{product['coupon']}`\n" if product.get('coupon') else ""
+        coupon_line = f"🎫 优惠码: `{product['coupon']}`  ← 点击复制\n" if product.get('coupon') else ""
         specs_line = f"⚙️ {product['specs']}\n" if product.get('specs') else ""
         
         msg = f"""#库存监控 {tag}
