@@ -35,6 +35,11 @@ class StockMonitor:
             return None
         
         domain = urlparse(url).netloc
+        
+        # 检测是否是分类页面（多个商品）
+        if self.is_category_page(html):
+            return await self.parse_category(html, url, domain)
+        
         return {
             'merchant': self.get_merchant(html, domain, url),
             'name': self.get_name(html, url),
@@ -42,6 +47,11 @@ class StockMonitor:
             'specs': self.get_specs(html),
             'in_stock': self.check_stock(html)
         }
+    
+    def is_category_page(self, html):
+        # 多个商品卡片 = 分类页
+        cards = re.findall(r'class="[^"]*package[^"]*"', html, re.I)
+        return len(cards) > 1
     
     def get_merchant(self, html, domain, url):
         # 从域名提取
@@ -105,4 +115,55 @@ class StockMonitor:
         for kw in in_kw:
             if kw in html_lower:
                 return True
+        return True
+
+    async def parse_category(self, html, url, domain):
+        """解析分类页面，返回多个商品"""
+        products = []
+        merchant = self.get_merchant(html, domain, url)
+        
+        # 匹配 WHMCS 商品卡片
+        pattern = r'<div[^>]*class="[^"]*package[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</div>'
+        cards = re.findall(pattern, html, re.S | re.I)
+        
+        for card in cards:
+            name = self.extract_card_name(card)
+            price = self.extract_card_price(card)
+            specs = self.extract_card_specs(card)
+            in_stock = self.extract_card_stock(card)
+            
+            if name:
+                products.append({
+                    'merchant': merchant,
+                    'name': name,
+                    'price': price,
+                    'specs': specs,
+                    'in_stock': in_stock
+                })
+        
+        return products if products else None
+
+    def extract_card_name(self, card):
+        m = re.search(r'<h[23][^>]*>([^<]+)</h[23]>', card, re.I)
+        return m.group(1).strip()[:50] if m else None
+
+    def extract_card_price(self, card):
+        m = re.search(r'\$(\d+\.?\d*)', card)
+        return f"${m.group(1)}/月" if m else "价格未知"
+
+    def extract_card_specs(self, card):
+        specs = []
+        if m := re.search(r'vCPU[^0-9]*(\d+)|(\d+)\s*Core', card, re.I):
+            specs.append(f"{m.group(1) or m.group(2)}C")
+        if m := re.search(r'RAM[^0-9]*(\d+)', card, re.I):
+            specs.append(f"{m.group(1)}G")
+        if m := re.search(r'Disk[^0-9]*(\d+)|(\d+)GB\s*SSD', card, re.I):
+            specs.append(f"{m.group(1) or m.group(2)}G")
+        if m := re.search(r'([\d.]+)\s*TB', card, re.I):
+            specs.append(f"{m.group(1)}T")
+        return '/'.join(specs)
+
+    def extract_card_stock(self, card):
+        if '0 Available' in card or '0 available' in card:
+            return False
         return True

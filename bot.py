@@ -263,6 +263,28 @@ class StockBot:
                     await update.message.reply_text("❌ 无法解析", reply_markup=self.back_menu())
                     return
                 
+                # 批量添加（分类页面返回列表）
+                if isinstance(info, list):
+                    added = 0
+                    for item in info:
+                        pid = max([p['id'] for p in self.products], default=0) + 1
+                        product = {
+                            'id': pid, 'url': url,
+                            'name': item.get('name', '未知'),
+                            'merchant': item.get('merchant', '未知'),
+                            'price': item.get('price', '未知'),
+                            'specs': item.get('specs', ''),
+                            'coupon': coupon,
+                            'in_stock': item.get('in_stock', False),
+                            'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+                        self.products.append(product)
+                        added += 1
+                    self.save_products()
+                    await update.message.reply_text(f"✅ 批量添加 {added} 个商品", reply_markup=self.back_menu())
+                    return
+                
+                # 单个商品
                 pid = max([p['id'] for p in self.products], default=0) + 1
                 product = {
                     'id': pid, 'url': url,
