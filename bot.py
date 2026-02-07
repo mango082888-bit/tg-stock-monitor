@@ -57,7 +57,7 @@ class StockBot:
             [InlineKeyboardButton("➕ 添加监控", callback_data="add"),
              InlineKeyboardButton("📋 监控列表", callback_data="list")],
             [InlineKeyboardButton("🎯 推送目标", callback_data="targets"),
-             InlineKeyboardButton("🔗 绑定当前", callback_data="bind")],
+             InlineKeyboardButton("➕ 添加目标", callback_data="add_target")],
             [InlineKeyboardButton("⏱ 检查频率", callback_data="interval"),
              InlineKeyboardButton("📊 运行状态", callback_data="status")]
         ]
@@ -92,6 +92,13 @@ class StockBot:
             await self.show_list(query)
         elif data == "targets":
             await self.show_targets(query)
+        elif data == "add_target":
+            self.waiting_for[query.from_user.id] = "add_target"
+            await query.edit_message_text(
+                "📝 请发送频道/群组 ID\n\n例如：`-1001234567890`\n\n💡 获取方法：转发频道消息给 @userinfobot",
+                parse_mode='Markdown',
+                reply_markup=self.back_menu()
+            )
         elif data == "bind":
             await self.bind_chat(query)
         elif data == "status":
@@ -226,8 +233,25 @@ class StockBot:
         user_id = update.effective_user.id
         text = update.message.text.strip()
         
-        if user_id in self.waiting_for and self.waiting_for[user_id] == "add_url":
+        if user_id in self.waiting_for:
+            action = self.waiting_for[user_id]
             del self.waiting_for[user_id]
+            
+            if action == "add_target":
+                try:
+                    chat_id = int(text)
+                    for t in self.targets:
+                        if t['chat_id'] == chat_id:
+                            await update.message.reply_text("⚠️ 该目标已存在", reply_markup=self.back_menu())
+                            return
+                    self.targets.append({'chat_id': chat_id, 'title': str(chat_id)})
+                    self.save_targets()
+                    await update.message.reply_text(f"✅ 已添加目标: {chat_id}", reply_markup=self.back_menu())
+                except:
+                    await update.message.reply_text("❌ ID 格式错误", reply_markup=self.back_menu())
+                return
+            
+            if action == "add_url":
             parts = text.split(maxsplit=1)
             url = parts[0]
             coupon = parts[1] if len(parts) > 1 else None
