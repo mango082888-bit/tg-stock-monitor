@@ -42,6 +42,9 @@ class StockBot:
             return default
     
     def save_products(self):
+        # 自动排序ID
+        for i, p in enumerate(self.products):
+            p["id"] = i + 1
         with open(PRODUCTS_FILE, 'w', encoding='utf-8') as f:
             json.dump(self.products, f, ensure_ascii=False, indent=2)
     

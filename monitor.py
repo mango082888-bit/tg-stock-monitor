@@ -6,6 +6,14 @@ import asyncio
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
+# Misaka 所有地区
+MISAKA_LOCATIONS = [
+    ('sin03', 'Singapore SIN03'),
+    ('nrt04', 'Tokyo NRT04'),
+    ('hkg12', 'Hong Kong HKG12'),
+    ('tpe01', 'Taipei TPE01'),
+]
+
 class StockMonitor:
     def __init__(self):
         self.browser = None
@@ -21,7 +29,11 @@ class StockMonitor:
             await self.init_browser()
             page = await self.browser.new_page()
             await page.goto(url, wait_until='networkidle', timeout=30000)
-            await asyncio.sleep(2)
+            domain = urlparse(url).netloc
+            if 'misaka' in domain:
+                await asyncio.sleep(5)
+            else:
+                await asyncio.sleep(2)
             html = await page.content()
             await page.close()
             return html
@@ -30,13 +42,16 @@ class StockMonitor:
             return None
 
     async def parse_product(self, url):
+        domain = urlparse(url).netloc
+        
+        # Misaka: 返回所有地区列表
+        if 'misaka' in domain:
+            return await self.parse_misaka_all(url)
+        
         html = await self.fetch(url)
         if not html:
             return None
         
-        domain = urlparse(url).netloc
-        
-        # 检测是否是分类页面（多个商品）
         if self.is_category_page(html):
             return await self.parse_category(html, url, domain)
         
@@ -48,99 +63,120 @@ class StockMonitor:
             'in_stock': self.check_stock(html)
         }
     
+    async def parse_misaka_all(self, url):
+        """解析 Misaka 所有地区"""
+        # 从 URL 提取 plan: /iaas/vm/create/hkg12/s3n-1c1g
+        parts = url.rstrip('/').split('/')
+        plan = parts[-1] if len(parts) >= 1 else 's3n-1c1g'
+        
+        products = []
+        for loc_code, loc_name in MISAKA_LOCATIONS:
+            loc_url = f"https://app.misaka.io/iaas/vm/create/{loc_code}/{plan}"
+            html = await self.fetch(loc_url)
+            if html:
+                info = self.parse_misaka_single(html, loc_url, loc_code, loc_name, plan)
+                info['url'] = loc_url
+                products.append(info)
+        
+        return products if products else None
+    
+    def parse_misaka_single(self, html, url, loc_code, loc_name, plan):
+        """解析单个 Misaka 地区"""
+        # 解析配置 s3n-1c1g
+        specs = ''
+        m = re.search(r'(\d+)c(\d+)g', plan, re.I)
+        if m:
+            specs = f"{m.group(1)}C/{m.group(2)}G"
+        
+        # 价格
+        price = 'price unknown'
+        for p in [r'HK\$\s*([\d.]+)', r'\$\s*([\d.]+)\s*/\s*mo', r'\$\s*([\d.]+)']:
+            m = re.search(p, html, re.I)
+            if m:
+                price = f"HK${m.group(1)}/mo"
+                break
+        
+        # 库存
+        in_stock = True
+        html_lower = html.lower()
+        if 'out of stock' in html_lower or 'out_of_stock' in html_lower:
+            in_stock = False
+        if 'sold out' in html_lower or 'currently unavailable' in html_lower:
+            in_stock = False
+        
+        return {
+            'merchant': 'Misaka',
+            'name': f"{loc_name} {plan}",
+            'price': price,
+            'specs': specs,
+            'in_stock': in_stock
+        }
+
     def is_category_page(self, html):
-        # 多个商品卡片 = 分类页
         cards = re.findall(r'class="[^"]*package[^"]*"', html, re.I)
         return len(cards) > 1
     
     def get_merchant(self, html, domain, url):
-        # 从域名提取
-        name = domain.replace('my.', '').replace('www.', '').split('.')[0]
+        name = domain.replace('my.', '').replace('www.', '').replace('app.', '').split('.')[0]
         return name.upper()
 
     def get_name(self, html, url):
-        # 从 URL 提取
         if '/store/' in url:
             name = url.split('/')[-1].split('?')[0]
             return name.replace('-', ' ').title()[:50]
-        # 从 h1 提取
         m = re.search(r'<h1[^>]*>([^<]+)</h1>', html, re.I)
         if m:
             return m.group(1).strip()[:50]
-        return "未知商品"
+        return "Unknown"
 
     def get_price(self, html):
-        # WHMCS 价格格式
         patterns = [
             r'\$(\d+\.?\d*)\s*USD\s*Monthly',
             r'\$(\d+\.?\d*)\s*USD',
             r'Starting from[^$]*\$(\d+\.?\d*)',
-            r'(\d+\.?\d*)\s*USD/月',
         ]
         for p in patterns:
             m = re.search(p, html, re.I)
             if m:
-                return f"${m.group(1)}/月"
-        return "价格未知"
+                return f"${m.group(1)}/mo"
+        return "price unknown"
 
     def get_specs(self, html):
         specs = []
-        # vCPU
         m = re.search(r'vCPU\s*(?:Core\s*)?(\d+)|(\d+)\s*Core', html, re.I)
         if m:
             specs.append(f"{m.group(1) or m.group(2)}C")
-        # RAM
         m = re.search(r'RAM\s*(\d+)\s*GB|(\d+)\s*GB\s*RAM', html, re.I)
         if m:
             specs.append(f"{m.group(1) or m.group(2)}G")
-        # Disk
         m = re.search(r'Disk\s*(\d+)\s*GB|(\d+)\s*GB\s*SSD', html, re.I)
         if m:
             specs.append(f"{m.group(1) or m.group(2)}G")
-        # Traffic
-        m = re.search(r'Traffic\s*([\d.]+)\s*TB|([\d.]+)\s*TB', html, re.I)
-        if m:
-            specs.append(f"{m.group(1) or m.group(2)}T")
         return '/'.join(specs) if specs else ""
 
     def check_stock(self, html):
         html_lower = html.lower()
-        # 缺货关键词
-        out_kw = ['0 available', 'out of stock', 'sold out', '缺货', '售罄']
-        for kw in out_kw:
+        for kw in ['0 available', 'out of stock', 'sold out']:
             if kw in html_lower:
                 return False
-        # 有货关键词
-        in_kw = ['available', 'in stock', 'order now', '有货']
-        for kw in in_kw:
-            if kw in html_lower:
-                return True
         return True
 
     async def parse_category(self, html, url, domain):
-        """解析分类页面，返回多个商品"""
         products = []
         merchant = self.get_merchant(html, domain, url)
-        
-        # 匹配 WHMCS 商品卡片
         pattern = r'<div[^>]*class="[^"]*package[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</div>'
         cards = re.findall(pattern, html, re.S | re.I)
         
         for card in cards:
             name = self.extract_card_name(card)
-            price = self.extract_card_price(card)
-            specs = self.extract_card_specs(card)
-            in_stock = self.extract_card_stock(card)
-            
             if name:
                 products.append({
                     'merchant': merchant,
                     'name': name,
-                    'price': price,
-                    'specs': specs,
-                    'in_stock': in_stock
+                    'price': self.extract_card_price(card),
+                    'specs': self.extract_card_specs(card),
+                    'in_stock': self.extract_card_stock(card)
                 })
-        
         return products if products else None
 
     def extract_card_name(self, card):
@@ -149,7 +185,7 @@ class StockMonitor:
 
     def extract_card_price(self, card):
         m = re.search(r'\$(\d+\.?\d*)', card)
-        return f"${m.group(1)}/月" if m else "价格未知"
+        return f"${m.group(1)}/mo" if m else "price unknown"
 
     def extract_card_specs(self, card):
         specs = []
@@ -157,10 +193,6 @@ class StockMonitor:
             specs.append(f"{m.group(1) or m.group(2)}C")
         if m := re.search(r'RAM[^0-9]*(\d+)', card, re.I):
             specs.append(f"{m.group(1)}G")
-        if m := re.search(r'Disk[^0-9]*(\d+)|(\d+)GB\s*SSD', card, re.I):
-            specs.append(f"{m.group(1) or m.group(2)}G")
-        if m := re.search(r'([\d.]+)\s*TB', card, re.I):
-            specs.append(f"{m.group(1)}T")
         return '/'.join(specs)
 
     def extract_card_stock(self, card):
