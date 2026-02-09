@@ -262,7 +262,7 @@ class StockBot:
             if p['id'] == pid:
                 await query.edit_message_text("🔍 正在检查...")
                 info = await self.monitor.parse_product(p['url'])
-                if info:
+                if info and isinstance(info, dict):
                     p['in_stock'] = info.get('in_stock', False)
                     p['price'] = info.get('price', p['price'])
                     p['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -394,7 +394,15 @@ class StockBot:
             for p in self.products:
                 try:
                     info = await self.monitor.parse_product(p['url'])
-                    if info:
+                    # 如果返回列表，根据名称匹配
+                    if isinstance(info, list):
+                        for item in info:
+                            if item.get('name') == p['name']:
+                                info = item
+                                break
+                        else:
+                            info = None
+                    if info and isinstance(info, dict):
                         was_in = p.get('in_stock', False)
                         now_in = info.get('in_stock', False)
                         
