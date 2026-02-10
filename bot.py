@@ -324,7 +324,7 @@ class StockBot:
                             'price': item.get('price', '未知'),
                             'specs': item.get('specs', ''),
                             'coupon': coupon,
-                            'in_stock': item.get('in_stock', False),
+                            'in_stock': False,
                             'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         }
                         self.products.append(product)
@@ -342,7 +342,7 @@ class StockBot:
                     'price': info.get('price', '未知'),
                     'specs': info.get('specs', ''),
                     'coupon': coupon,
-                    'in_stock': info.get('in_stock', False),
+                    'in_stock': False,
                     'last_check': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
                 self.products.append(product)
@@ -425,16 +425,17 @@ class StockBot:
 
 def main():
     bot = StockBot()
-    app = Application.builder().token(bot.token).build()
+    
+    async def post_init(app):
+        asyncio.create_task(bot.monitor_loop(app))
+        logger.info("监控循环已启动")
+    
+    app = Application.builder().token(bot.token).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", bot.start))
     app.add_handler(CommandHandler("help", bot.start))
     app.add_handler(CallbackQueryHandler(bot.button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.create_task(bot.monitor_loop(app))
     
     logger.info("Bot 启动")
     app.run_polling(drop_pending_updates=True)
