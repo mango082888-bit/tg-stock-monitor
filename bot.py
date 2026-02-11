@@ -408,6 +408,7 @@ class StockBot:
                         
                         p['in_stock'] = now_in
                         p['price'] = info.get('price', p['price'])
+                        if info.get('url'): p['url'] = info['url']
                         p['last_check'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         
                         if not was_in and now_in:

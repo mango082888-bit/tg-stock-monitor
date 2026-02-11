@@ -156,7 +156,7 @@ class StockMonitor:
 
     def check_stock(self, html):
         html_lower = html.lower()
-        for kw in ['0 available', 'out of stock', 'sold out']:
+        for kw in ['0 available', 'out of stock', 'sold out', '0 可用', '缺货', '已售罄']:
             if kw in html_lower:
                 return False
         return True
@@ -164,19 +164,24 @@ class StockMonitor:
     async def parse_category(self, html, url, domain):
         products = []
         merchant = self.get_merchant(html, domain, url)
-        pattern = r'<div[^>]*class="[^"]*package[^"]*"[^>]*>(.*?)</div>\s*</div>\s*</div>'
-        cards = re.findall(pattern, html, re.S | re.I)
+        base_url = f"https://{domain}"
         
-        for card in cards:
-            name = self.extract_card_name(card)
-            if name:
-                products.append({
-                    'merchant': merchant,
-                    'name': name,
-                    'price': self.extract_card_price(card),
-                    'specs': self.extract_card_specs(card),
-                    'in_stock': self.extract_card_stock(card)
-                })
+        # 匹配: pid, 商品名, 价格, 商品链接, 库存
+        pattern = r'id="product(\d+)".*?<h3 class="package-title">([^<]+)</h3>.*?\$\s*([\d.]+)\s*USD.*?href="([^"]+)"[^>]*class="[^"]*btn-order-now.*?(\d+)\s*Available'
+        matches = re.findall(pattern, html, re.S | re.I)
+        
+        for pid, name, price, link, qty in matches:
+            name = name.strip()
+            full_url = link if link.startswith("http") else base_url + link
+            products.append({
+                'merchant': merchant,
+                'name': name,
+                'price': f"${price}/mo",
+                'specs': '',
+                'in_stock': int(qty) > 0,
+                'url': full_url
+            })
+        
         return products if products else None
 
     def extract_card_name(self, card):
@@ -195,7 +200,7 @@ class StockMonitor:
             specs.append(f"{m.group(1)}G")
         return '/'.join(specs)
 
-    def extract_card_stock(self, card):
+    def extract_card_stock(self, card, html=None):
         if '0 Available' in card or '0 available' in card:
             return False
         return True
