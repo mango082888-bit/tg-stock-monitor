@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 PRODUCTS_FILE = os.path.join(DATA_DIR, 'products.json')
 TARGETS_FILE = os.path.join(DATA_DIR, 'targets.json')
+SETTINGS_FILE = os.path.join(DATA_DIR, 'settings.json')
 os.makedirs(DATA_DIR, exist_ok=True)
 
 class StockBot:
@@ -30,8 +31,9 @@ class StockBot:
         self.admin_id = int(os.getenv('ADMIN_ID', '0'))
         self.products = self.load_json(PRODUCTS_FILE, [])
         self.targets = self.load_json(TARGETS_FILE, [])
+        self.settings = self.load_json(SETTINGS_FILE, {})
         self.monitor = StockMonitor()
-        self.check_interval = 30
+        self.check_interval = self.settings.get('check_interval', 5)
         self.waiting_for = {}  # user_id -> action
         
     def load_json(self, path, default):
@@ -51,6 +53,11 @@ class StockBot:
     def save_targets(self):
         with open(TARGETS_FILE, 'w', encoding='utf-8') as f:
             json.dump(self.targets, f, ensure_ascii=False, indent=2)
+    
+    def save_settings(self):
+        self.settings['check_interval'] = self.check_interval
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(self.settings, f, ensure_ascii=False, indent=2)
     
     def is_admin(self, user_id):
         return user_id == self.admin_id
@@ -127,6 +134,7 @@ class StockBot:
         elif data.startswith("interval_"):
             sec = int(data.split("_")[1])
             self.check_interval = sec
+            self.save_settings()
             await query.edit_message_text(f"✅ 检查频率已设为 {sec} 秒", reply_markup=self.back_menu())
         elif data == "test_push":
             await self.test_push(query)
@@ -240,6 +248,8 @@ class StockBot:
 
     async def show_interval(self, query):
         keyboard = [
+            [InlineKeyboardButton("5秒", callback_data="interval_5"),
+             InlineKeyboardButton("10秒", callback_data="interval_10")],
             [InlineKeyboardButton("30秒", callback_data="interval_30"),
              InlineKeyboardButton("60秒", callback_data="interval_60")],
             [InlineKeyboardButton("120秒", callback_data="interval_120"),
@@ -389,7 +399,7 @@ class StockBot:
 
     async def monitor_loop(self, app):
         """定时检查库存"""
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
         while True:
             for p in self.products:
                 try:
@@ -421,7 +431,7 @@ class StockBot:
                         self.save_products()
                 except Exception as e:
                     logger.error(f"检查失败 {p.get('name')}: {e}")
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
             await asyncio.sleep(self.check_interval)
 
 def main():
